@@ -27,8 +27,9 @@ const HTML_PREVIEW_CSP =
   '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: blob:; style-src \'unsafe-inline\'; font-src data:; media-src data: blob:;">';
 
 /**
- * A blob URL for an HTML preview with a CSP that blocks network resources. Remote images, CSS,
- * fonts, media, frames, and scripts are refused; inline styles and local data images still work.
+ * A blob URL for an HTML preview with a CSP that blocks network resources. The policy is
+ * prepended before any document content (after an optional UTF-8 BOM), so it applies even to
+ * malformed documents with content before their head element.
  */
 export function createHtmlPreviewUrl(bytes: Uint8Array): string | null {
   if (Platform.OS !== "web") return null;
@@ -42,19 +43,13 @@ export function createHtmlPreviewUrl(bytes: Uint8Array): string | null {
     return createHtmlUrl(`<!doctype html>${HTML_PREVIEW_CSP}<p>HTML preview is unavailable for this file encoding.</p>`);
   }
 
-  const safeBytes = stripMetaRefresh(bytes);
-  let insertAt = findDoctypeEnd(safeBytes);
-  const headStart = findAscii(safeBytes, "<head", insertAt, Math.min(safeBytes.length, 8192));
-  if (headStart >= 0) {
-    const headEnd = findAscii(safeBytes, ">", headStart, Math.min(safeBytes.length, 8192));
-    if (headEnd >= 0) insertAt = headEnd + 1;
-  }
-
-  const prefix = asciiBytes(HTML_PREVIEW_CSP);
-  const combined = new Uint8Array(prefix.length + safeBytes.length);
-  combined.set(safeBytes.subarray(0, insertAt), 0);
-  combined.set(prefix, insertAt);
-  combined.set(safeBytes.subarray(insertAt), insertAt + prefix.length);
+  const source = stripMetaRefresh(bytes);
+  const bom = source[0] === 0xef && source[1] === 0xbb && source[2] === 0xbf ? 3 : 0;
+  const prefix = asciiBytes(`<!doctype html>${HTML_PREVIEW_CSP}`);
+  const combined = new Uint8Array(prefix.length + source.length);
+  combined.set(source.subarray(0, bom), 0);
+  combined.set(prefix, bom);
+  combined.set(source.subarray(bom), bom + prefix.length);
   return URL.createObjectURL(new Blob([combined], { type: "text/html" }));
 }
 
@@ -85,12 +80,6 @@ function findAscii(bytes: Uint8Array, needle: string, start: number, end: number
   return -1;
 }
 
-function findDoctypeEnd(bytes: Uint8Array): number {
-  const start = findAscii(bytes, "<!doctype", 0, 1024);
-  if (start < 0) return 0;
-  const end = findAscii(bytes, ">", start, 1024);
-  return end < 0 ? 0 : end + 1;
-}
 
 /** Removes automatic meta refresh navigation; links still require a click. */
 function stripMetaRefresh(bytes: Uint8Array): Uint8Array {
