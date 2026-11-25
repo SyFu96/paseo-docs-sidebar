@@ -1,0 +1,15 @@
+{
+  "id": "docs-sidebar",
+  "name": "Docs sidebar",
+  "description": "A document workspace in Paseo's right explorer with a file tree, document tabs, and rendered previews.",
+  "translations": {
+    "zh-CN": {
+      "name": "Docs 文档区",
+      "description": "在右侧 Explorer 中提供文件树、文档标签和渲染预览的文档工作区。"
+    }
+  },
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.17.4"
+  }
+}
