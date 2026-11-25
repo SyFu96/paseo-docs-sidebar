@@ -82,7 +82,9 @@ export function DocPreview({
     root,
     path,
     text: renderedMath.text,
-    enabled: kind === "markdown" && !sourceMode,
+    // Math placeholders must exist before sanitizing; otherwise this query would parse the raw
+    // TeX text and the later math result would not replace already-cached sanitized text.
+    enabled: kind === "markdown" && !sourceMode && !renderedMath.pending,
   });
   const markdownImages = useMarkdownImages({
     root,
