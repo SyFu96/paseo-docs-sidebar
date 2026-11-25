@@ -79,3 +79,132 @@ export function interceptLinkClicks(
   element.addEventListener("click", onClick, true);
   return () => element.removeEventListener("click", onClick, true);
 }
+
+// Minimal DOM shapes for the MathML injector.
+interface WebMathSegment {
+  placeholder: string;
+  mathml: string;
+  display: boolean;
+}
+
+interface WebDomNode {
+  nodeType: number;
+  nodeValue?: string | null;
+  parentNode?: WebDomContainer | null;
+  parentElement?: WebDomContainer | null;
+}
+
+interface WebDomContainer extends WebDomNode {
+  tagName?: string;
+  insertBefore(newChild: WebDomNode, reference: WebDomNode): WebDomNode;
+  removeChild(child: WebDomNode): WebDomNode;
+}
+
+interface WebDomElement extends WebDomContainer {
+  innerHTML: string;
+  setAttribute(name: string, value: string): void;
+}
+
+interface WebDomDocument {
+  createElement(tag: string): WebDomElement;
+  createTextNode(text: string): WebDomNode;
+  createTreeWalker(root: WebDomNode, whatToShow: number): { nextNode(): WebDomNode | null };
+}
+
+interface WebDomObserver {
+  observe(target: WebDomNode, options: { childList: boolean; subtree: boolean }): void;
+  disconnect(): void;
+}
+
+declare const document: WebDomDocument | undefined;
+declare const MutationObserver: { new (callback: () => void): WebDomObserver } | undefined;
+
+const SHOW_TEXT = 4;
+
+/**
+ * Replaces MathML placeholders inside the rendered Markdown with real MathML elements. Paseo's
+ * plugin Markdown has no latexMath option and strips raw HTML, so this runs after rendering.
+ */
+export function injectMath(
+  node: unknown,
+  formulas: readonly WebMathSegment[],
+): (() => void) | undefined {
+  if (Platform.OS !== "web" || formulas.length === 0) return undefined;
+  if (typeof document === "undefined") return undefined;
+  const dom = document;
+  const root = node as WebDomContainer | null;
+  if (!root || typeof root.insertBefore !== "function") return undefined;
+
+  const byPlaceholder = new Map(formulas.map((formula) => [formula.placeholder, formula]));
+  const Observer = typeof MutationObserver === "undefined" ? null : MutationObserver;
+  let observer: WebDomObserver | null = null;
+  let applying = false;
+
+  const insideCode = (textNode: WebDomNode): boolean => {
+    let parent = textNode.parentElement ?? null;
+    while (parent) {
+      const tag = parent.tagName?.toUpperCase();
+      if (tag === "CODE" || tag === "PRE") return true;
+      parent = parent.parentElement ?? null;
+    }
+    return false;
+  };
+
+  const replacePlaceholders = (textNode: WebDomNode) => {
+    if (insideCode(textNode)) return;
+    const parent = textNode.parentNode;
+    if (!parent) return;
+    const value = textNode.nodeValue ?? "";
+    const pattern = /\uE000(\d+)\uE001/g;
+    let last = 0;
+    let replaced = false;
+    for (let match = pattern.exec(value); match; match = pattern.exec(value)) {
+      const formula = byPlaceholder.get(match[0]);
+      if (!formula) continue;
+      if (!/^<math\b/i.test(formula.mathml) || /<script|on[a-z]+\s*=/i.test(formula.mathml)) {
+        continue;
+      }
+      if (match.index > last) {
+        parent.insertBefore(dom.createTextNode(value.slice(last, match.index)), textNode);
+      }
+      const wrapper = dom.createElement("span");
+      wrapper.setAttribute("data-paseo-math", formula.display ? "display" : "inline");
+      wrapper.setAttribute(
+        "style",
+        formula.display
+          ? "display:block;text-align:center;margin:14px 0;"
+          : "display:inline-block;vertical-align:middle;font-size:1.05em;",
+      );
+      wrapper.innerHTML = formula.mathml;
+      parent.insertBefore(wrapper, textNode);
+      last = match.index + match[0].length;
+      replaced = true;
+    }
+    if (!replaced) return;
+    if (last < value.length) {
+      parent.insertBefore(dom.createTextNode(value.slice(last)), textNode);
+    }
+    parent.removeChild(textNode);
+  };
+
+  const apply = () => {
+    if (applying) return;
+    applying = true;
+    observer?.disconnect();
+    const walker = dom.createTreeWalker(root, SHOW_TEXT);
+    const targets: WebDomNode[] = [];
+    let current = walker.nextNode();
+    while (current) {
+      const value = current.nodeValue;
+      if (value && value.includes("\uE000")) targets.push(current);
+      current = walker.nextNode();
+    }
+    for (const target of targets) replacePlaceholders(target);
+    observer?.observe(root, { childList: true, subtree: true });
+    applying = false;
+  };
+
+  if (Observer) observer = new Observer(apply);
+  apply();
+  return () => observer?.disconnect();
+}

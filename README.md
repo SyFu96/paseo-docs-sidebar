@@ -7,6 +7,7 @@ A Paseo plugin that adds a document workspace to the right explorer: a workspace
 ## What it does
 
 - Markdown rendered as a document, with a source toggle. Relative images load from the workspace.
+- LaTeX math in Markdown (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`) rendered on the desktop client.
 - Word documents (`.docx`, `.docm`) as a simplified reading view with headings, basic formatting, tables, and embedded images on desktop.
 - HTML and PDF previews in an isolated document frame on desktop.
 - Images inline; other text files as source.
@@ -17,7 +18,7 @@ A Paseo plugin that adds a document workspace to the right explorer: a workspace
 ## Requirements
 
 - Paseo 0.17.4 or later.
-- Desktop client for Word, HTML, and PDF previews. Markdown, text, and images work on other clients.
+- Desktop client for Word, HTML, PDF, and math previews. Markdown text and images work on other clients.
 
 ## Install
 
@@ -41,6 +42,8 @@ paseo plugin install /absolute/path/to/docs-sidebar
 
 Then open Paseo's command center and choose **Docs: open on the right**, or pick **Docs** from the explorer's new-tab menu.
 
+Git and marketplace installs run the manifest's preparation command once, which installs the local KaTeX math renderer. A local checkout needs `npm install`.
+
 ## Development
 
 ```bash
@@ -50,7 +53,7 @@ paseo plugin install "$PWD"
 paseo plugin reload docs-sidebar
 ```
 
-The plugin has no build step. Paseo compiles the TypeScript entries and supplies the host modules (`react`, `react-native`, `zod`, `@tanstack/react-query`, `@getpaseo/plugin`) at runtime.
+The plugin has no separate build step. Paseo compiles the TypeScript entries and supplies the host modules (`react`, `react-native`, `zod`, `@tanstack/react-query`, `@getpaseo/plugin`) at runtime. Math rendering uses KaTeX on the daemon; `paseo-plugin.json` declares `npm ci --omit=dev --ignore-scripts` as the preparation command for Git and marketplace installs. For a local checkout, `npm install` keeps KaTeX available.
 
 ## How it works
 
@@ -58,7 +61,8 @@ The plugin has no build step. Paseo compiles the TypeScript entries and supplies
 - `client/docs-panel.tsx` renders the document tabs, toolbar, tree, and preview split.
 - `client/file-tree.tsx` lazy-loads directories and searches file names.
 - `client/preview.tsx` renders Markdown with Paseo's `Markdown` component, and HTML/PDF with `DocumentFrame`.
-- `index.server.ts` handles daemon-side RPCs for listing, reading, and searching workspace files.
+- `server/math.ts` converts TeX math to MathML with KaTeX; `client/markdown-math.ts` and `client/web.ts` inject it after rendering.
+- `index.server.ts` handles daemon-side RPCs for listing, reading, searching, converting Word files, and rendering math.
 - `shared/docs.ts` defines the RPC contracts and file-kind helpers.
 
 ## Limits
@@ -67,8 +71,9 @@ The plugin has no build step. Paseo compiles the TypeScript entries and supplies
 - The plugin has its own file tree. Files opened from Paseo's built-in Files tab still open in the center area.
 - HTML previews do not run page scripts.
 - Markdown relative image paths and document links resolve against the open file; paths outside the workspace are refused.
-- HTML and PDF previews need the desktop client.
+- Math rendering needs the desktop client; other clients show the raw TeX. Unsupported TeX stays as text.
+- Word, HTML, PDF, and math previews need the desktop client.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Math rendering uses [KaTeX](https://katex.org/), also MIT.

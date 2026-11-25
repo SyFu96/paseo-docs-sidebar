@@ -50,6 +50,22 @@ export const readDocxRpc = defineRpc({
   }),
 });
 
+export const renderMathRpc = defineRpc({
+  name: "docs.render_math",
+  input: z.object({ text: z.string().min(1).max(2 * 1024 * 1024) }),
+  output: z.object({
+    text: z.string(),
+    formulas: z.array(
+      z.object({
+        placeholder: z.string(),
+        mathml: z.string(),
+        display: z.boolean(),
+      }),
+    ),
+    warnings: z.array(z.string()),
+  }),
+});
+
 export type DocKind = "markdown" | "html" | "pdf" | "docx" | "image" | "text" | "binary";
 
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);

@@ -1,7 +1,7 @@
 {
   "name": "docs-sidebar",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A document workspace in Paseo's right explorer with a file tree, document tabs, and rendered previews.",
   "license": "MIT",
   "repository": {
@@ -34,5 +34,8 @@
     "react-native": "0.81.5",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "katex": "^0.19.1"
   }
 }

@@ -1,7 +1,7 @@
 import { useRpc } from "@getpaseo/plugin/client";
 import { DocumentFrame, Loading, Markdown } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Image, ScrollView, Text, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import {
@@ -14,7 +14,8 @@ import {
 } from "../shared/docs";
 import { useDocumentUrl, useHtmlUrl } from "./hooks";
 import { useMarkdownImages } from "./markdown-images";
-import { interceptLinkClicks } from "./web";
+import { useRenderedMath } from "./markdown-math";
+import { injectMath, interceptLinkClicks } from "./web";
 
 interface DocPreviewProps {
   root: string;
@@ -62,11 +63,18 @@ export function DocPreview({
   });
   const documentUrl = useDocumentUrl(bytesQuery.data, mimeType(path));
   const docxUrl = useHtmlUrl(docxQuery.data?.html);
+  const renderedMath = useRenderedMath({
+    hostId,
+    root,
+    path,
+    text: textQuery.data?.text ?? "",
+    enabled: kind === "markdown" && !sourceMode,
+  });
   const markdownImages = useMarkdownImages({
     root,
     hostId,
     path,
-    text: textQuery.data?.text ?? "",
+    text: renderedMath.text,
     enabled: kind === "markdown" && !sourceMode && Boolean(textQuery.data),
   });
   const [linkContainer, setLinkContainer] = useState<View | null>(null);
@@ -75,6 +83,10 @@ export function DocPreview({
   useEffect(() => {
     scrollView.current?.scrollTo({ y: 0, animated: false });
   }, [path]);
+
+  useLayoutEffect(() => {
+    return injectMath(linkContainer, renderedMath.formulas);
+  }, [linkContainer, renderedMath.formulas]);
 
   // Paseo's Markdown opens document links in the workspace. Keep relative document links inside
   // this panel instead: resolve them against the current file and open a document tab.
@@ -96,6 +108,7 @@ export function DocPreview({
     if (textQuery.isError) return <Notice theme={theme} text="读取文件失败" />;
     const { text, truncated } = textQuery.data;
     if (kind === "markdown" && !sourceMode) {
+      if (renderedMath.pending) return <Centered><Loading /></Centered>;
       return (
         <ScrollView
           ref={scrollView}
@@ -103,6 +116,9 @@ export function DocPreview({
           contentContainerStyle={{ padding: compact ? 10 : 24 }}
         >
           {truncated ? <Notice theme={theme} text="文件过大，仅显示前 2 MB" /> : null}
+          {!renderedMath.pending && renderedMath.warnings.length > 0 ? (
+            <Notice theme={theme} text={renderedMath.warnings.join("；")} />
+          ) : null}
           {!markdownImages.pending && markdownImages.failed > 0 ? (
             <Notice theme={theme} text={`${markdownImages.failed} 张图片未能加载`} />
           ) : null}

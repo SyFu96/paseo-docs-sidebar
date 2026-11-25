@@ -11,5 +11,6 @@
   "media": ["assets/screenshot.png"],
   "requirements": {
     "paseo": ">=0.17.4"
-  }
+  },
+  "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]]
 }
