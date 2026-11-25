@@ -12,7 +12,7 @@ import {
   readTextRpc,
   resolveDocLink,
 } from "../shared/docs";
-import { useDocumentUrl, useHtmlUrl } from "./hooks";
+import { useDocumentUrl, useHtmlPreviewUrl, useHtmlUrl } from "./hooks";
 import { useMarkdownImages } from "./markdown-images";
 import { useRenderedMath } from "./markdown-math";
 import { injectMath, interceptLinkClicks } from "./web";
@@ -61,7 +61,13 @@ export function DocPreview({
     enabled: kind === "docx",
     staleTime: 2_000,
   });
-  const documentUrl = useDocumentUrl(bytesQuery.data, mimeType(path));
+  const documentUrl = useDocumentUrl(
+    kind === "html" && !sourceMode ? undefined : bytesQuery.data,
+    mimeType(path),
+  );
+  const htmlPreviewUrl = useHtmlPreviewUrl(
+    kind === "html" && !sourceMode ? bytesQuery.data : undefined,
+  );
   const docxUrl = useHtmlUrl(docxQuery.data?.html);
   const renderedMath = useRenderedMath({
     hostId,
@@ -175,12 +181,13 @@ export function DocPreview({
   if (bytesQuery.isError) return <Notice theme={theme} text="读取文件失败" />;
 
   if (kind === "html" || kind === "pdf") {
-    if (!documentUrl) {
+    const previewUrl = kind === "html" ? htmlPreviewUrl : documentUrl;
+    if (!previewUrl) {
       return <Notice theme={theme} text="当前客户端不支持该预览，请在桌面端打开" />;
     }
     return (
       <View style={{ flex: 1, backgroundColor: "#ffffff" }}>
-        <DocumentFrame url={documentUrl} />
+        <DocumentFrame url={previewUrl} />
       </View>
     );
   }

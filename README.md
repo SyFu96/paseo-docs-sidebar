@@ -71,6 +71,7 @@ The plugin has no separate build step. Paseo compiles the TypeScript entries and
 - The plugin has its own file tree. Files opened from Paseo's built-in Files tab still open in the center area.
 - HTML previews do not run page scripts.
 - Markdown relative image paths and document links resolve against the open file; paths outside the workspace are refused.
+- Remote images in Markdown are replaced with a local placeholder. HTML previews block network resources with a content security policy; http(s) links open externally only when clicked.
 - Math rendering needs the desktop client; other clients show the raw TeX. Unsupported TeX stays as text.
 - Word, HTML, PDF, and math previews need the desktop client.
 

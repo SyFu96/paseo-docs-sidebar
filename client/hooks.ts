@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { createDocumentUrl, createHtmlUrl, releaseDocumentUrl } from "./web";
+import {
+  createDocumentUrl,
+  createHtmlPreviewUrl,
+  createHtmlUrl,
+  releaseDocumentUrl,
+} from "./web";
 
 /** Keeps one blob URL alive for the current document bytes. */
 export function useDocumentUrl(bytes: Uint8Array | undefined, mimeType: string): string | null {
@@ -32,6 +37,23 @@ export function useHtmlUrl(html: string | undefined): string | null {
       if (next) releaseDocumentUrl(next);
     };
   }, [html]);
+  return url;
+}
+
+/** Keeps one CSP-protected blob URL alive for an HTML file preview. */
+export function useHtmlPreviewUrl(bytes: Uint8Array | undefined): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!bytes) {
+      setUrl(null);
+      return;
+    }
+    const next = createHtmlPreviewUrl(bytes);
+    setUrl(next);
+    return () => {
+      if (next) releaseDocumentUrl(next);
+    };
+  }, [bytes]);
   return url;
 }
 

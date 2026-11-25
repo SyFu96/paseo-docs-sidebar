@@ -23,6 +23,111 @@ export function createHtmlUrl(html: string): string | null {
   return URL.createObjectURL(new Blob([html], { type: "text/html" }));
 }
 
+const HTML_PREVIEW_CSP =
+  '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: blob:; style-src \'unsafe-inline\'; font-src data:; media-src data: blob:;">';
+
+/**
+ * A blob URL for an HTML preview with a CSP that blocks network resources. Remote images, CSS,
+ * fonts, media, frames, and scripts are refused; inline styles and local data images still work.
+ */
+export function createHtmlPreviewUrl(bytes: Uint8Array): string | null {
+  if (Platform.OS !== "web") return null;
+  if (typeof Blob === "undefined" || typeof URL === "undefined") return null;
+  // Re-encoding UTF-16 would corrupt the document; refuse the preview rather than render it
+  // without the network block.
+  if (
+    (bytes[0] === 0xff && bytes[1] === 0xfe) ||
+    (bytes[0] === 0xfe && bytes[1] === 0xff)
+  ) {
+    return createHtmlUrl(`<!doctype html>${HTML_PREVIEW_CSP}<p>HTML preview is unavailable for this file encoding.</p>`);
+  }
+
+  const safeBytes = stripMetaRefresh(bytes);
+  let insertAt = findDoctypeEnd(safeBytes);
+  const headStart = findAscii(safeBytes, "<head", insertAt, Math.min(safeBytes.length, 8192));
+  if (headStart >= 0) {
+    const headEnd = findAscii(safeBytes, ">", headStart, Math.min(safeBytes.length, 8192));
+    if (headEnd >= 0) insertAt = headEnd + 1;
+  }
+
+  const prefix = asciiBytes(HTML_PREVIEW_CSP);
+  const combined = new Uint8Array(prefix.length + safeBytes.length);
+  combined.set(safeBytes.subarray(0, insertAt), 0);
+  combined.set(prefix, insertAt);
+  combined.set(safeBytes.subarray(insertAt), insertAt + prefix.length);
+  return URL.createObjectURL(new Blob([combined], { type: "text/html" }));
+}
+
+function asciiBytes(value: string): Uint8Array {
+  const bytes = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    bytes[index] = value.charCodeAt(index) & 0xff;
+  }
+  return bytes;
+}
+
+/** Case-insensitive ASCII search; HTML tags in UTF-8 and other ASCII-compatible encodings match. */
+function findAscii(bytes: Uint8Array, needle: string, start: number, end: number): number {
+  const lower = needle.toLowerCase();
+  const limit = Math.min(end, bytes.length) - lower.length;
+  for (let index = Math.max(0, start); index <= limit; index += 1) {
+    let matches = true;
+    for (let offset = 0; offset < lower.length; offset += 1) {
+      const byte = bytes[index + offset];
+      const value = byte >= 65 && byte <= 90 ? byte + 32 : byte;
+      if (value !== lower.charCodeAt(offset)) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return index;
+  }
+  return -1;
+}
+
+function findDoctypeEnd(bytes: Uint8Array): number {
+  const start = findAscii(bytes, "<!doctype", 0, 1024);
+  if (start < 0) return 0;
+  const end = findAscii(bytes, ">", start, 1024);
+  return end < 0 ? 0 : end + 1;
+}
+
+/** Removes automatic meta refresh navigation; links still require a click. */
+function stripMetaRefresh(bytes: Uint8Array): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  let cursor = 0;
+  let index = findAscii(bytes, "<meta", 0, bytes.length);
+  while (index >= 0) {
+    const end = findAscii(bytes, ">", index, bytes.length);
+    if (end < 0) break;
+    const tag = asciiLower(bytes.subarray(index, end + 1));
+    if (tag.includes("http-equiv") && tag.includes("refresh")) {
+      chunks.push(bytes.subarray(cursor, index));
+      cursor = end + 1;
+    }
+    index = findAscii(bytes, "<meta", end + 1, bytes.length);
+  }
+  if (chunks.length === 0) return bytes;
+  chunks.push(bytes.subarray(cursor));
+  const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const output = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return output;
+}
+
+function asciiLower(bytes: Uint8Array): string {
+  let text = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index];
+    text += String.fromCharCode(byte >= 65 && byte <= 90 ? byte + 32 : byte);
+  }
+  return text;
+}
+
 export function releaseDocumentUrl(url: string): void {
   if (Platform.OS !== "web") return;
   if (typeof URL !== "undefined") URL.revokeObjectURL(url);

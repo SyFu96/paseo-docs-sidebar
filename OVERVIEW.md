@@ -14,6 +14,8 @@ Open the command center and choose "Docs: open on the right", or pick the Docs t
 
 ## Data and limits
 
-The daemon reads files from the current workspace. Every path is resolved against the workspace root, and paths outside it are refused. File contents travel only between the daemon and the Paseo client. The plugin makes no network requests and does not send file contents to agent providers.
+The daemon reads files from the current workspace. Every path is resolved against the workspace root, and paths outside it are refused. File contents travel only between the daemon and the Paseo client. The plugin does not initiate network requests and does not send file contents to agent providers.
+
+Previews do not load remote resources embedded in a document. Remote images in Markdown are replaced with a local placeholder, and HTML previews run with a content security policy that blocks images, styles, fonts, media, frames, and scripts from the network. An http(s) link opens in the external browser only when you click it.
 
 HTML previews do not run page scripts. HTML and PDF previews use local blob URLs and are available on the desktop client; the mobile client shows a notice. Math is rendered locally by KaTeX on the daemon and sent to the client as MathML; it makes no network requests. Math rendering, Word, HTML, and PDF previews need the desktop client, and other clients show raw TeX. Word previews are a reading view and do not reproduce page layout, headers and footers, footnotes, equations, fields, or complex merged cells; legacy `.doc` files are not supported, and macros in `.docm` files are not executed. The plugin has its own file tree: files opened from Paseo's built-in Files tab still open in the center area.

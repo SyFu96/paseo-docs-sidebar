@@ -2,7 +2,11 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { docKind, mimeType, readBytesRpc, resolveDocLink } from "../shared/docs";
-import { extractImageSources, rewriteMarkdownImages } from "./markdown-image-syntax";
+import {
+  blockRemoteImages,
+  extractImageSources,
+  rewriteMarkdownImages,
+} from "./markdown-image-syntax";
 import { createDocumentUrl, releaseDocumentUrl } from "./web";
 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -29,7 +33,8 @@ export function useMarkdownImages(input: {
   enabled: boolean;
 }): MarkdownImages {
   const readBytes = useRpc(readBytesRpc);
-  const sources = useMemo(() => extractImageSources(input.text), [input.text]);
+  const safeText = useMemo(() => blockRemoteImages(input.text), [input.text]);
+  const sources = useMemo(() => extractImageSources(safeText), [safeText]);
   const resolved = useMemo(
     () =>
       sources
@@ -92,7 +97,7 @@ export function useMarkdownImages(input: {
     };
   }, [query.data]);
 
-  const markdown = useMemo(() => rewriteMarkdownImages(input.text, urls), [input.text, urls]);
+  const markdown = useMemo(() => rewriteMarkdownImages(safeText, urls), [safeText, urls]);
   const failed = query.data?.filter((item) => !item.bytes).length ?? 0;
   return {
     markdown,

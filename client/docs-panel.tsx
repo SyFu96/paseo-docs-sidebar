@@ -95,7 +95,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
           ellipsizeMode="middle"
           style={{ flex: 1, minWidth: 0, color: theme.colors.foregroundMuted, fontSize: 12 }}
         >
-          {active ?? "文档"}
+          {workspace.name}
         </Text>
         {sourceAvailable ? (
           <IconButton
@@ -135,12 +135,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
               }}
             >
               <Icon name="FolderOpen" size={13} color={theme.colors.foregroundMuted} />
-              <Text
-                numberOfLines={1}
-                style={{ flex: 1, color: theme.colors.foreground, fontSize: 12, lineHeight: 16 }}
-              >
-                {workspace.name}
-              </Text>
+              <View style={{ flex: 1 }} />
               <IconButton
                 theme={theme}
                 icon="PanelLeftClose"
