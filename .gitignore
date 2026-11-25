@@ -1,4 +1,5 @@
 node_modules/
+docs-sidebar-handoff.md
 npm-debug.log*
 .DS_Store
 *.tsbuildinfo
