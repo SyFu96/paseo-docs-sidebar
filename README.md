@@ -13,6 +13,7 @@ A Paseo plugin that adds a document workspace to the right explorer: a workspace
 - Images inline; other text files as source.
 - Relative document links in a Markdown preview open as new tabs in the same panel on the desktop client.
 - Open documents, expanded folders, and tree visibility persist per explorer tab.
+- The file tree divider can be dragged to resize it; the width persists per explorer tab.
 - The explorer is workspace-scoped, so switching agent sessions keeps the document area.
 
 ## Requirements

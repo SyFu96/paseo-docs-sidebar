@@ -6,6 +6,7 @@ export const docsPanelStateSchema = z.object({
   active: z.string().nullable(),
   expanded: z.array(z.string()).max(300),
   showTree: z.boolean(),
+  treeWidth: z.number().int().min(160).max(560).catch(236),
   source: z.boolean(),
 });
 
@@ -16,5 +17,6 @@ export const DEFAULT_DOCS_PANEL_STATE: DocsPanelState = {
   active: null,
   expanded: [],
   showTree: true,
+  treeWidth: 236,
   source: false,
 };

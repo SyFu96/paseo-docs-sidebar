@@ -7,12 +7,14 @@ import {
   searchFiles,
 } from "./server/docs";
 import { renderMathInMarkdown } from "./server/math";
+import { sanitizeMarkdownImages } from "./server/markdown-sanitize";
 import {
   listDirectoryRpc,
   readBytesRpc,
   readDocxRpc,
   readTextRpc,
   renderMathRpc,
+  sanitizeMarkdownRpc,
   searchFilesRpc,
 } from "./shared/docs";
 
@@ -23,5 +25,6 @@ export default function contribute(server: PluginServerContext) {
   server.handle(readBytesRpc, readBinaryFile);
   server.handle(readDocxRpc, readDocxFile);
   server.handle(renderMathRpc, ({ text }) => renderMathInMarkdown(text));
+  server.handle(sanitizeMarkdownRpc, ({ text }) => sanitizeMarkdownImages(text));
   return () => {};
 }

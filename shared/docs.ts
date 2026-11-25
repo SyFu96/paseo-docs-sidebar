@@ -66,6 +66,15 @@ export const renderMathRpc = defineRpc({
   }),
 });
 
+export const sanitizeMarkdownRpc = defineRpc({
+  name: "docs.sanitize_markdown",
+  input: z.object({ text: z.string().min(1).max(2 * 1024 * 1024) }),
+  output: z.object({
+    text: z.string(),
+    blocked: z.number().int().nonnegative(),
+  }),
+});
+
 export type DocKind = "markdown" | "html" | "pdf" | "docx" | "image" | "text" | "binary";
 
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);

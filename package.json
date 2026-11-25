@@ -1,7 +1,7 @@
 {
   "name": "docs-sidebar",
   "private": true,
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "A document workspace in Paseo's right explorer with a file tree, document tabs, and rendered previews.",
   "license": "MIT",
   "repository": {
@@ -28,6 +28,7 @@
   "devDependencies": {
     "@getpaseo/plugin": "0.17.4",
     "@tanstack/react-query": "^5.90.11",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^24.19.2",
     "@types/react": "~19.2.0",
     "react": "19.1.0",
@@ -36,6 +37,9 @@
     "zod": "^4.4.3"
   },
   "dependencies": {
-    "katex": "^0.19.1"
+    "katex": "^0.19.1",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm-table": "^2.0.1",
+    "micromark-extension-gfm-table": "^2.1.2"
   }
 }

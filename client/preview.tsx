@@ -15,6 +15,7 @@ import {
 import { useDocumentUrl, useHtmlPreviewUrl, useHtmlUrl } from "./hooks";
 import { useMarkdownImages } from "./markdown-images";
 import { useRenderedMath } from "./markdown-math";
+import { useSafeMarkdown } from "./safe-markdown";
 import { injectMath, interceptLinkClicks } from "./web";
 
 interface DocPreviewProps {
@@ -76,12 +77,24 @@ export function DocPreview({
     text: textQuery.data?.text ?? "",
     enabled: kind === "markdown" && !sourceMode,
   });
+  const safeMarkdown = useSafeMarkdown({
+    hostId,
+    root,
+    path,
+    text: renderedMath.text,
+    enabled: kind === "markdown" && !sourceMode,
+  });
   const markdownImages = useMarkdownImages({
     root,
     hostId,
     path,
-    text: renderedMath.text,
-    enabled: kind === "markdown" && !sourceMode && Boolean(textQuery.data),
+    text: safeMarkdown.text,
+    enabled:
+      kind === "markdown" &&
+      !sourceMode &&
+      Boolean(textQuery.data) &&
+      !safeMarkdown.pending &&
+      !safeMarkdown.error,
   });
   const [linkContainer, setLinkContainer] = useState<View | null>(null);
   const scrollView = useRef<ScrollView>(null);
@@ -114,7 +127,12 @@ export function DocPreview({
     if (textQuery.isError) return <Notice theme={theme} text="读取文件失败" />;
     const { text, truncated } = textQuery.data;
     if (kind === "markdown" && !sourceMode) {
-      if (renderedMath.pending) return <Centered><Loading /></Centered>;
+      if (renderedMath.pending || safeMarkdown.pending) {
+        return <Centered><Loading /></Centered>;
+      }
+      if (safeMarkdown.error) {
+        return <Notice theme={theme} text="内容安全检查失败，已停止渲染" />;
+      }
       return (
         <ScrollView
           ref={scrollView}

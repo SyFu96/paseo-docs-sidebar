@@ -4,7 +4,7 @@ Adds a document workspace to Paseo's right explorer. It shows the current worksp
 
 Markdown opens as a rendered document with a source toggle. HTML and PDF open in an isolated document frame on the desktop client. Word documents (`.docx` and `.docm`) open in a simplified reading view on the desktop client, with headings, basic formatting, tables, and embedded images. Images render inline, and other text files open as source. On the desktop client, a relative document link inside a Markdown preview opens as a new tab in the same panel. Relative image paths in Markdown resolve against the open file, and LaTeX math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`) renders as MathML.
 
-Open documents, expanded folders, and the tree visibility are stored in the explorer tab, so they come back after restarting Paseo. The explorer belongs to the workspace rather than to one agent, so switching sessions keeps the document area unchanged.
+Open documents, expanded folders, and the tree visibility are stored in the explorer tab, so they come back after restarting Paseo. The file tree divider can be dragged to resize it, and the width is kept with the explorer tab. The explorer belongs to the workspace rather than to one agent, so switching sessions keeps the document area unchanged.
 
 ## Setup
 
