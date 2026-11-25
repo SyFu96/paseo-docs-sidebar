@@ -1,7 +1,7 @@
 {
   "name": "docs-sidebar",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "A document workspace in Paseo's right explorer with a file tree, document tabs, and rendered previews.",
   "license": "MIT",
   "repository": {
@@ -37,6 +37,7 @@
     "zod": "^4.4.3"
   },
   "dependencies": {
+    "htmlparser2": "^12.0.0",
     "katex": "^0.19.1",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-gfm-table": "^2.0.1",

@@ -1,6 +1,8 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmTableFromMarkdown } from "mdast-util-gfm-table";
 import { gfmTable } from "micromark-extension-gfm-table";
+import { parseDocument } from "htmlparser2";
+import type { AnyNode } from "domhandler";
 import type { Definition, Nodes } from "mdast";
 
 const REMOTE_IMAGE = /^(?:https?:)?\/\//i;
@@ -48,7 +50,7 @@ export function sanitizeMarkdownImages(source: string): MarkdownSanitizeResult {
         edits.push({ start, end, text: blockedImage(node.alt) });
       }
     }
-    if (node.type === "html") {
+    if (node.type === "html" || node.type === "text") {
       const start = node.position?.start.offset;
       const end = node.position?.end.offset;
       if (start !== undefined && end !== undefined) {
@@ -97,39 +99,40 @@ function blockedImage(alt: string | null | undefined): string {
 }
 
 function replaceHtmlImages(raw: string): string {
-  return raw.replace(/<img\b[^>]*>/gi, (tag) => {
-    const src = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
-    if (!src) return tag;
-    const value = decodeEntities(src[1] ?? src[2] ?? "");
-    if (!REMOTE_IMAGE.test(value)) return tag;
-    return tag.replace(/\bsrc\s*=\s*(?:"[^"]*"|'[^']*')/i, `src="${BLOCKED_IMAGE_URL}"`);
-  });
-}
-
-function decodeEntities(value: string): string {
-  return value.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (match, entity: string) => {
-    switch (entity) {
-      case "amp":
-        return "&";
-      case "lt":
-        return "<";
-      case "gt":
-        return ">";
-      case "quot":
-        return '"';
-      case "apos":
-        return "'";
-      default: {
-        const code = entity.startsWith("#x")
-          ? Number.parseInt(entity.slice(2), 16)
-          : Number.parseInt(entity.slice(1), 10);
-        if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return match;
-        try {
-          return String.fromCodePoint(code);
-        } catch {
-          return match;
+  const document = parseDocument(raw, { withStartIndices: true, withEndIndices: true });
+  const edits: Edit[] = [];
+  const visit = (node: AnyNode) => {
+    if (node.type === "tag" && node.name === "img") {
+      const src = node.attribs.src?.trim().replace(/\\/g, "/");
+      if (src && REMOTE_IMAGE.test(src)) {
+        const start = node.startIndex;
+        const end = node.endIndex;
+        if (start !== null && end !== null) {
+          const attribs = { ...node.attribs, src: BLOCKED_IMAGE_URL };
+          const tag = `<img${Object.entries(attribs)
+            .map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`)
+            .join("")}>`;
+          edits.push({ start, end: end + 1, text: tag });
         }
       }
     }
-  });
+    if ("children" in node) node.children.forEach(visit);
+  };
+  document.children.forEach(visit);
+  if (edits.length === 0) return raw;
+
+  edits.sort((left, right) => right.start - left.start);
+  let text = raw;
+  for (const edit of edits) {
+    text = text.slice(0, edit.start) + edit.text + text.slice(edit.end);
+  }
+  return text;
+}
+
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
