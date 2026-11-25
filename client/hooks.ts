@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createDocumentUrl, releaseDocumentUrl } from "./web";
+import { createDocumentUrl, createHtmlUrl, releaseDocumentUrl } from "./web";
 
 /** Keeps one blob URL alive for the current document bytes. */
 export function useDocumentUrl(bytes: Uint8Array | undefined, mimeType: string): string | null {
@@ -15,6 +15,23 @@ export function useDocumentUrl(bytes: Uint8Array | undefined, mimeType: string):
       if (next) releaseDocumentUrl(next);
     };
   }, [bytes, mimeType]);
+  return url;
+}
+
+/** Keeps one blob URL alive for converted document HTML. */
+export function useHtmlUrl(html: string | undefined): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (html === undefined) {
+      setUrl(null);
+      return;
+    }
+    const next = createHtmlUrl(html);
+    setUrl(next);
+    return () => {
+      if (next) releaseDocumentUrl(next);
+    };
+  }, [html]);
   return url;
 }
 

@@ -171,6 +171,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
               sourceMode={state.source}
               theme={theme}
               compact={layout.compact}
+              onOpenDoc={openDoc}
             />
           </View>
         ) : (
@@ -312,6 +313,8 @@ function iconFor(path: string): string {
       return "FileCode";
     case "pdf":
       return "FileType";
+    case "docx":
+      return "FileText";
     case "image":
       return "Image";
     default:

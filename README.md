@@ -2,31 +2,41 @@
 
 A Paseo plugin that adds a document workspace to the right explorer: a workspace file tree, document tabs, and rendered previews.
 
+![Docs sidebar in Paseo's explorer](assets/screenshot.png)
+
 ## What it does
 
-- Markdown rendered as a document, with a source toggle.
+- Markdown rendered as a document, with a source toggle. Relative images load from the workspace.
+- Word documents (`.docx`, `.docm`) as a simplified reading view with headings, basic formatting, tables, and embedded images on desktop.
 - HTML and PDF previews in an isolated document frame on desktop.
 - Images inline; other text files as source.
+- Relative document links in a Markdown preview open as new tabs in the same panel on the desktop client.
 - Open documents, expanded folders, and tree visibility persist per explorer tab.
 - The explorer is workspace-scoped, so switching agent sessions keeps the document area.
 
 ## Requirements
 
 - Paseo 0.17.4 or later.
-- Desktop client for HTML and PDF previews. Markdown, text, and images work on other clients.
+- Desktop client for Word, HTML, and PDF previews. Markdown, text, and images work on other clients.
 
 ## Install
+
+From the plugin marketplace (after approval):
+
+```bash
+paseo plugin add SyFu96/paseo-docs-sidebar
+```
+
+Directly from GitHub, which works before the listing is approved:
+
+```bash
+paseo plugin add git:SyFu96/paseo-docs-sidebar
+```
 
 From a local checkout:
 
 ```bash
 paseo plugin install /absolute/path/to/docs-sidebar
-```
-
-From GitHub:
-
-```bash
-paseo plugin add git:OWNER/REPOSITORY
 ```
 
 Then open Paseo's command center and choose **Docs: open on the right**, or pick **Docs** from the explorer's new-tab menu.
@@ -53,11 +63,12 @@ The plugin has no build step. Paseo compiles the TypeScript entries and supplies
 
 ## Limits
 
+- Word previews are a reading view: page layout, headers and footers, footnotes, equations, fields, and complex merged cells are not reproduced. Legacy `.doc` files are not supported, and macros in `.docm` files are not executed.
 - The plugin has its own file tree. Files opened from Paseo's built-in Files tab still open in the center area.
 - HTML previews do not run page scripts.
-- Markdown relative image paths may not resolve.
+- Markdown relative image paths and document links resolve against the open file; paths outside the workspace are refused.
 - HTML and PDF previews need the desktop client.
 
 ## License
 
-Add the license you want to use before publishing. MIT and Apache-2.0 are both compatible with the plugin structure.
+MIT. See [LICENSE](LICENSE).

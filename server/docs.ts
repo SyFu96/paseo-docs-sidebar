@@ -5,10 +5,12 @@ import {
   joinRelative,
   listDirectoryRpc,
   readBytesRpc,
+  readDocxRpc,
   readTextRpc,
   searchFilesRpc,
   type FileEntry,
 } from "../shared/docs";
+import { convertDocx } from "./docx";
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_BINARY_BYTES = 30 * 1024 * 1024;
@@ -106,6 +108,19 @@ export async function readBinaryFile({
   if (stat.size > MAX_BINARY_BYTES) throw new Error("文件过大，无法预览");
   const data = await fs.readFile(file);
   return new Uint8Array(data);
+}
+
+export async function readDocxFile({
+  root,
+  path: relative,
+}: RpcInput<typeof readDocxRpc>): Promise<{ html: string; warnings: string[] }> {
+  const workspaceRoot = assertRoot(root);
+  const file = await resolveRealInside(workspaceRoot, relative);
+  const stat = await fs.stat(file);
+  if (!stat.isFile()) throw new Error("不是文件");
+  if (stat.size > MAX_BINARY_BYTES) throw new Error("文件过大，无法预览");
+  const data = await fs.readFile(file);
+  return convertDocx(data);
 }
 
 export async function searchFiles({
