@@ -461,6 +461,25 @@ export function injectMath(
   const Observer = typeof MutationObserver === "undefined" ? null : MutationObserver;
   let observer: WebDomObserver | null = null;
   let applying = false;
+  // Never remove or move Paseo's text nodes: React still owns them and later removes them by
+  // reference. Keep the original value so a re-render can be restored before injecting again.
+  const injected: WebDomNode[] = [];
+  const originals = new Map<WebDomNode, { original: string; suffix: string }>();
+
+  const reset = () => {
+    for (const [textNode, state] of originals) {
+      if (textNode.parentNode && textNode.nodeValue === state.suffix) {
+        textNode.nodeValue = state.original;
+      }
+    }
+    originals.clear();
+    for (let index = injected.length - 1; index >= 0; index -= 1) {
+      const node = injected[index];
+      const parent = node.parentNode;
+      if (parent) parent.removeChild(node);
+    }
+    injected.length = 0;
+  };
 
   const insideCode = (textNode: WebDomNode): boolean => {
     let parent = textNode.parentElement ?? null;
@@ -487,7 +506,9 @@ export function injectMath(
         continue;
       }
       if (match.index > last) {
-        parent.insertBefore(dom.createTextNode(value.slice(last, match.index)), textNode);
+        const prefix = dom.createTextNode(value.slice(last, match.index));
+        parent.insertBefore(prefix, textNode);
+        injected.push(prefix);
       }
       const wrapper = dom.createElement("span");
       wrapper.setAttribute("data-paseo-math", formula.display ? "display" : "inline");
@@ -499,20 +520,23 @@ export function injectMath(
       );
       wrapper.innerHTML = formula.mathml;
       parent.insertBefore(wrapper, textNode);
+      injected.push(wrapper);
       last = match.index + match[0].length;
       replaced = true;
     }
     if (!replaced) return;
-    if (last < value.length) {
-      parent.insertBefore(dom.createTextNode(value.slice(last)), textNode);
-    }
-    parent.removeChild(textNode);
+    // Keep the React-owned text node attached and hold only the tail. React can keep updating or
+    // removing it without a DOM ownership conflict.
+    const suffix = value.slice(last);
+    originals.set(textNode, { original: value, suffix });
+    textNode.nodeValue = suffix;
   };
 
   const apply = () => {
     if (applying) return;
     applying = true;
     observer?.disconnect();
+    reset();
     const walker = dom.createTreeWalker(root, SHOW_TEXT);
     const targets: WebDomNode[] = [];
     let current = walker.nextNode();
@@ -528,5 +552,8 @@ export function injectMath(
 
   if (Observer) observer = new Observer(apply);
   apply();
-  return () => observer?.disconnect();
+  return () => {
+    observer?.disconnect();
+    reset();
+  };
 }
