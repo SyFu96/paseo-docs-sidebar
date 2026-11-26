@@ -2,7 +2,7 @@
 
 A Paseo plugin that adds a document workspace to the right explorer: a workspace file tree, document tabs, and rendered previews.
 
-![Docs sidebar in Paseo's explorer](assets/screenshot.png)
+![Docs sidebar in Paseo's explorer](assets/screenshot-md.png)
 
 ## What it does
 
