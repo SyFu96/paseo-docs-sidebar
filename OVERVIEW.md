@@ -12,6 +12,8 @@ Requires Paseo 0.17.4 or later. No account, token, or external service is needed
 
 Open the command center and choose "Docs: open on the right", or pick the Docs tab from the explorer's new-tab menu.
 
+The repository's `examples/` folder contains a small sample workspace for Markdown, HTML, and Word previews.
+
 ## Data and limits
 
 The daemon reads files from the current workspace. Every path is resolved against the workspace root, and paths outside it are refused. File contents travel only between the daemon and the Paseo client. The plugin does not initiate network requests and does not send file contents to agent providers.

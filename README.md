@@ -45,6 +45,10 @@ Then open Paseo's command center and choose **Docs: open on the right**, or pick
 
 Git and marketplace installs run the manifest's preparation command once, which installs the local KaTeX math renderer. A local checkout needs `npm install`.
 
+## Demo workspace
+
+The `examples/` folder is a small Paseo workspace with Markdown, HTML, and Word samples, including math, tables, images, a reference image whose URL is on the next line, and a long file name. Open the folder as a workspace to try the previews and drag the file tree divider.
+
 ## Development
 
 ```bash

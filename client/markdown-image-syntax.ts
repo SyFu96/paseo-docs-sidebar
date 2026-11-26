@@ -4,13 +4,17 @@ const INLINE_IMAGE =
   /!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
 const HTML_IMAGE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi;
 const REFERENCE_DEFINITION = /^(\s{0,3}\[[^\]]+\]:\s*)(<[^>]*>|\S+)(.*)$/;
+const REFERENCE_START = /^\s{0,3}\[[^\]]+\]:\s*$/;
+const REFERENCE_DESTINATION = /^(\s*)(<[^>]*>|\S+)(.*)$/;
 const FENCE = /^\s*(```|~~~)/;
 
 /** Collects relative image destinations from inline images, HTML images, and reference definitions. */
 export function extractImageSources(text: string): string[] {
   const sources = new Set<string>();
+  const lines = text.split(/\r?\n/);
   let inFence = false;
-  for (const line of text.split(/\r?\n/)) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     if (FENCE.test(line)) {
       inFence = !inFence;
       continue;
@@ -24,7 +28,17 @@ export function extractImageSources(text: string): string[] {
       addSource(sources, match[1] ?? match[2] ?? "");
     }
     const definition = REFERENCE_DEFINITION.exec(line);
-    if (definition) addSource(sources, definition[2]);
+    if (definition) {
+      addSource(sources, definition[2]);
+      continue;
+    }
+    if (REFERENCE_START.test(line)) {
+      const nextLine = lines[index + 1];
+      if (nextLine !== undefined && !FENCE.test(nextLine)) {
+        const destination = REFERENCE_DESTINATION.exec(nextLine);
+        if (destination) addSource(sources, destination[2]);
+      }
+    }
   }
   return [...sources].slice(0, MAX_IMAGES);
 }
@@ -110,6 +124,17 @@ export function rewriteMarkdownImages(
       },
     );
     parts[index] = next;
+
+    if (REFERENCE_START.test(line)) {
+      const nextLine = parts[index + 2];
+      if (nextLine !== undefined && !FENCE.test(nextLine)) {
+        const destination = REFERENCE_DESTINATION.exec(nextLine);
+        if (destination) {
+          const url = urls.get(normalizeSource(destination[2]));
+          if (url) parts[index + 2] = `${destination[1]}<${url}>${destination[3]}`;
+        }
+      }
+    }
   }
   return parts.join("");
 }
