@@ -6,7 +6,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } 
 import { PanResponder, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { docKind, fileName } from "../shared/docs";
+import { DocDrawer } from "./doc-drawer";
+import { docIcon } from "./doc-icon";
 import type { DocFindResult } from "./docx-find";
+import {
+  forgetDocsWorkspace,
+  rememberDocsWorkspace,
+  subscribeDocReveal,
+  takeDocReveal,
+} from "./doc-reveal";
 import { FileTree } from "./file-tree";
 import { DocPreview } from "./preview";
 import { DEFAULT_DOCS_PANEL_STATE, docsPanelStateSchema, type DocsPanelState } from "./state";
@@ -52,6 +60,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
       ? docKind(active) === "markdown" || docKind(active) === "docx"
       : false;
   const [find, setFind] = useState<DocFindState>(EMPTY_DOC_FIND);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const update = (patch: Partial<DocsPanelState>) => setState({ ...state, ...patch });
 
@@ -103,6 +112,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
   const dragStartRef = useRef(state.treeWidth);
   const dragWidthRef = useRef<number | null>(null);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const openDocRef = useRef<(path: string) => void>(() => {});
   updateRef.current = update;
   compactRef.current = layout.compact;
 
@@ -153,6 +163,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
 
   const openDoc = (path: string) => {
     if (path !== active) resetFind();
+    setDrawerOpen(false);
     const tabs = state.tabs.includes(path)
       ? state.tabs
       : [...state.tabs, path].slice(-24);
@@ -165,8 +176,46 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
     const tabs = state.tabs.filter((item) => item !== path);
     const nextActive =
       state.active === path ? (tabs[index] ?? tabs[index - 1] ?? null) : state.active;
+    if (tabs.length === 0) setDrawerOpen(false);
     update({ tabs, active: nextActive });
   };
+
+  const selectDoc = (path: string) => {
+    if (path !== active) resetFind();
+    update({ active: path });
+    setDrawerOpen(false);
+  };
+
+  const closeOtherDocs = () => {
+    update({ tabs: active ? [active] : [], active });
+    setDrawerOpen(false);
+  };
+
+  const closeAllDocs = () => {
+    resetFind();
+    update({ tabs: [], active: null });
+    setDrawerOpen(false);
+  };
+
+  openDocRef.current = openDoc;
+
+  // The client-level link interceptor sends chat document links here. Keeping the queue in the
+  // panel scopes a reveal to its workspace and lets the panel open the tab once it is mounted.
+  useEffect(() => {
+    if (!root) return;
+    rememberDocsWorkspace(workspaceId, root);
+    const pending = takeDocReveal(workspaceId);
+    if (pending) openDocRef.current(pending.path);
+    const unsubscribe = subscribeDocReveal((reveal) => {
+      if (reveal.workspaceId !== workspaceId) return;
+      const next = takeDocReveal(workspaceId);
+      if (next) openDocRef.current(next.path);
+    });
+    return () => {
+      unsubscribe();
+      forgetDocsWorkspace(workspaceId);
+    };
+  }, [workspaceId, root]);
 
   const toggleFolder = (path: string) => {
     update({
@@ -189,16 +238,18 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
   }
 
   return (
-    <View style={{ flex: 1, minWidth: 0, backgroundColor: theme.colors.surface0 }}>
+    <View
+      nativeID="docs-sidebar-panel"
+      style={{ flex: 1, minWidth: 0, backgroundColor: theme.colors.surface0 }}
+    >
       <DocTabs
         tabs={state.tabs}
         active={active}
         theme={theme}
-        onSelect={(path) => {
-          if (path !== active) resetFind();
-          update({ active: path });
-        }}
+        onSelect={selectDoc}
         onClose={closeDoc}
+        onOpenDrawer={() => setDrawerOpen((open) => !open)}
+        drawerOpen={drawerOpen}
       />
       <View
         style={{
@@ -364,6 +415,19 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
           </View>
         )}
       </View>
+      {drawerOpen ? (
+        <DocDrawer
+          tabs={state.tabs}
+          active={active}
+          theme={theme}
+          compact={layout.compact}
+          onClose={() => setDrawerOpen(false)}
+          onSelect={selectDoc}
+          onCloseDoc={closeDoc}
+          onCloseOthers={closeOtherDocs}
+          onCloseAll={closeAllDocs}
+        />
+      ) : null}
     </View>
   );
 }
@@ -374,13 +438,31 @@ function DocTabs({
   theme,
   onSelect,
   onClose,
+  onOpenDrawer,
+  drawerOpen,
 }: {
   tabs: readonly string[];
   active: string | null;
   theme: PluginTheme;
   onSelect(path: string): void;
   onClose(path: string): void;
+  onOpenDrawer(): void;
+  drawerOpen: boolean;
 }) {
+  const scroll = useRef<ScrollView>(null);
+  const positions = useRef(new Map<string, { x: number; width: number }>());
+
+  const revealActive = () => {
+    if (!active) return;
+    const position = positions.current.get(active);
+    if (!position) return;
+    scroll.current?.scrollTo({ x: Math.max(0, position.x - 12), animated: true });
+  };
+
+  useEffect(() => {
+    revealActive();
+  }, [active, tabs]);
+
   return (
     <View
       style={{
@@ -392,8 +474,10 @@ function DocTabs({
       }}
     >
       <ScrollView
+        ref={scroll}
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={{ flex: 1, minWidth: 0 }}
         contentContainerStyle={{ flexGrow: 1 }}
       >
         {tabs.map((path) => {
@@ -401,6 +485,11 @@ function DocTabs({
           return (
             <View
               key={path}
+              onLayout={(event) => {
+                const { x, width } = event.nativeEvent.layout;
+                positions.current.set(path, { x, width });
+                if (path === active) revealActive();
+              }}
               style={{
                 height: 36,
                 flexDirection: "row",
@@ -417,7 +506,7 @@ function DocTabs({
                 style={{ height: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 10 }}
               >
                 <Icon
-                  name={iconFor(path)}
+                  name={docIcon(path)}
                   size={12}
                   color={selected ? theme.colors.foreground : theme.colors.foregroundMuted}
                 />
@@ -444,6 +533,32 @@ function DocTabs({
           );
         })}
       </ScrollView>
+      {tabs.length > 0 ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`全部打开的文档，${tabs.length} 个`}
+          onPress={onOpenDrawer}
+          style={({ pressed }) => ({
+            height: 36,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            paddingHorizontal: 8,
+            borderLeftWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: drawerOpen
+              ? theme.colors.surface2
+              : pressed
+                ? theme.colors.surface1
+                : "transparent",
+          })}
+        >
+          <Icon name="List" size={13} color={theme.colors.foregroundMuted} />
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+            {`全部 ${tabs.length}`}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -476,23 +591,6 @@ function IconButton({
       <Icon name={icon} size={14} color={theme.colors.foregroundMuted} />
     </Pressable>
   );
-}
-
-function iconFor(path: string): string {
-  switch (docKind(path)) {
-    case "markdown":
-      return "FileText";
-    case "html":
-      return "FileCode";
-    case "pdf":
-      return "FileType";
-    case "docx":
-      return "FileText";
-    case "image":
-      return "Image";
-    default:
-      return "FileCode";
-  }
 }
 
 /**

@@ -201,7 +201,7 @@ export function DocPreview({
     if (textQuery.isPending) {
       return pane(<Centered><Loading /></Centered>);
     }
-    if (textQuery.isError) return pane(<Notice theme={theme} text="读取文件失败" />);
+    if (textQuery.isError) return pane(<Notice theme={theme} text={`读取文件失败：${path}`} />);
     const { text, truncated } = textQuery.data;
     if (kind === "markdown" && !sourceMode) {
       if (renderedMath.pending || safeMarkdown.pending) {
@@ -282,7 +282,7 @@ export function DocPreview({
   if (bytesQuery.isPending) {
     return pane(<Centered><Loading /></Centered>);
   }
-  if (bytesQuery.isError) return pane(<Notice theme={theme} text="读取文件失败" />);
+  if (bytesQuery.isError) return pane(<Notice theme={theme} text={`读取文件失败：${path}`} />);
 
   if (kind === "html" || kind === "pdf") {
     const previewUrl = kind === "html" ? htmlPreviewUrl : documentUrl;

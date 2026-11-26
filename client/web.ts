@@ -132,6 +132,11 @@ interface WebTarget {
 interface WebClickEvent {
   target: unknown;
   button?: number;
+  key?: string;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
   preventDefault(): void;
   stopPropagation(): void;
 }
@@ -233,6 +238,16 @@ interface WebDomDocument {
   createRange(): WebRange;
   head?: WebDomElement;
   getElementById?(id: string): WebDomElement | null;
+  addEventListener(
+    type: string,
+    listener: (event: WebClickEvent) => void,
+    capture?: boolean,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: (event: WebClickEvent) => void,
+    capture?: boolean,
+  ): void;
 }
 
 interface WebDomObserver {
@@ -241,6 +256,7 @@ interface WebDomObserver {
 }
 
 declare const document: WebDomDocument | undefined;
+declare const window: { location: { pathname: string; hash: string } } | undefined;
 declare const MutationObserver: { new (callback: () => void): WebDomObserver } | undefined;
 declare const CSS: { highlights?: WebHighlightRegistry } | undefined;
 declare const Highlight: { new (...ranges: WebRange[]): unknown } | undefined;
@@ -352,6 +368,79 @@ export function findTextInContainer(
   const activeRange = ranges[Math.max(0, Math.min(active, ranges.length - 1))];
   if (activeRange) scrollRangeIntoView(activeRange);
   return { count: ranges.length, limited };
+}
+
+/** Reads the workspace ID from Paseo's `/h/:server/workspace/:workspaceId` route. */
+export function currentWorkspaceIdFromLocation(): string | null {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  const route = `${window.location.pathname}${window.location.hash}`;
+  const match = route.match(/\/workspace\/([^/?#]+)/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+/** Closes an overlay with Escape while it is open. Desktop web only. */
+export function interceptEscapeKey(handler: () => void): (() => void) | undefined {
+  if (Platform.OS !== "web" || typeof document === "undefined") return undefined;
+  const dom = document;
+  const onKeyDown = (event: WebClickEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    handler();
+  };
+  dom.addEventListener("keydown", onKeyDown, true);
+  return () => dom.removeEventListener("keydown", onKeyDown, true);
+}
+
+/**
+ * Intercepts plain clicks on document links inside agent chat. Paseo's markdown anchors carry the
+ * raw href and handle clicks with React, so a capture listener can hand the path to the Docs panel
+ * before the host opens the center file tab. Desktop web only; other hosts keep the default.
+ *
+ * Paseo has no public file-link hook. The chat selector is a compatibility contract: when the host
+ * markup changes, this handler finds nothing and the click falls through to Paseo instead of
+ * breaking the app.
+ */
+export function interceptAgentDocLinks(
+  handle: (href: string) => boolean,
+): (() => void) | undefined {
+  if (Platform.OS !== "web" || typeof document === "undefined") return undefined;
+  const dom = document;
+
+  const onClick = (event: WebClickEvent) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+
+    let target = event.target as WebTarget | null;
+    while (target && typeof target.closest !== "function") {
+      target = target.parentElement ?? null;
+    }
+    if (!target) return;
+    if (target.closest?.("#docs-sidebar-panel")) return;
+    if (!target.closest?.('[data-testid="agent-chat-scroll"]')) return;
+
+    const anchor = target.closest("a[href]");
+    const href = anchor?.getAttribute?.("href");
+    if (!href) return;
+
+    let handled = false;
+    try {
+      handled = handle(href);
+    } catch {
+      handled = false;
+    }
+    if (!handled) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  dom.addEventListener("click", onClick, true);
+  return () => dom.removeEventListener("click", onClick, true);
 }
 
 /**

@@ -1,5 +1,7 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { DocsPanel } from "./client/docs-panel";
+import { requestDocReveal, resolveDocReveal } from "./client/doc-reveal";
+import { currentWorkspaceIdFromLocation, interceptAgentDocLinks } from "./client/web";
 
 export default function contribute(client: PluginClientContext) {
   client.addWorkspacePanel({
@@ -32,5 +34,30 @@ export default function contribute(client: PluginClientContext) {
     },
   });
 
-  return () => {};
+  const stopDocLinks = interceptAgentDocLinks((href) => {
+    const target = resolveDocReveal(
+      href,
+      currentWorkspaceIdFromLocation(),
+      (workspaceId) => {
+        try {
+          return client.paseo.workspaces.ref(workspaceId).current()?.workspaceDirectory ?? null;
+        } catch {
+          return null;
+        }
+      },
+    );
+    if (!target) return false;
+
+    try {
+      client.openPanel("docs", { workspaceId: target.workspaceId, location: "explorer" });
+    } catch {
+      return false;
+    }
+    requestDocReveal(target.workspaceId, target.path);
+    return true;
+  });
+
+  return () => {
+    stopDocLinks?.();
+  };
 }
