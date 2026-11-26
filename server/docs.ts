@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { RpcInput } from "@getpaseo/plugin";
 import {
+  findDocxRpc,
   joinRelative,
   listDirectoryRpc,
   readBytesRpc,
@@ -11,6 +12,7 @@ import {
   type FileEntry,
 } from "../shared/docs";
 import { convertDocx } from "./docx";
+import { findDocxText } from "./docx-find";
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_BINARY_BYTES = 30 * 1024 * 1024;
@@ -121,6 +123,25 @@ export async function readDocxFile({
   if (stat.size > MAX_BINARY_BYTES) throw new Error("文件过大，无法预览");
   const data = await fs.readFile(file);
   return convertDocx(data);
+}
+
+export async function findDocxFile({
+  root,
+  path: relative,
+  query,
+}: RpcInput<typeof findDocxRpc>): Promise<{
+  html: string;
+  count: number;
+  limited: boolean;
+}> {
+  const workspaceRoot = assertRoot(root);
+  const file = await resolveRealInside(workspaceRoot, relative);
+  const stat = await fs.stat(file);
+  if (!stat.isFile()) throw new Error("不是文件");
+  if (stat.size > MAX_BINARY_BYTES) throw new Error("文件过大，无法预览");
+  const data = await fs.readFile(file);
+  const converted = convertDocx(data);
+  return findDocxText(converted.html, query);
 }
 
 export async function searchFiles({

@@ -1,5 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
+  findDocxFile,
   listDirectory,
   readBinaryFile,
   readDocxFile,
@@ -9,6 +10,7 @@ import {
 import { renderMathInMarkdown } from "./server/math";
 import { sanitizeMarkdownImages } from "./server/markdown-sanitize";
 import {
+  findDocxRpc,
   listDirectoryRpc,
   readBytesRpc,
   readDocxRpc,
@@ -24,6 +26,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(readTextRpc, readTextFile);
   server.handle(readBytesRpc, readBinaryFile);
   server.handle(readDocxRpc, readDocxFile);
+  server.handle(findDocxRpc, findDocxFile);
   server.handle(renderMathRpc, ({ text }) => renderMathInMarkdown(text));
   server.handle(sanitizeMarkdownRpc, ({ text }) => sanitizeMarkdownImages(text));
   return () => {};

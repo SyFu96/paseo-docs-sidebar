@@ -12,11 +12,12 @@ import {
   readTextRpc,
   resolveDocLink,
 } from "../shared/docs";
+import { useDocxFind, type DocFindResult } from "./docx-find";
 import { useDocumentUrl, useHtmlPreviewUrl, useHtmlUrl } from "./hooks";
 import { useMarkdownImages } from "./markdown-images";
 import { useRenderedMath } from "./markdown-math";
 import { useSafeMarkdown } from "./safe-markdown";
-import { injectMath, interceptLinkClicks } from "./web";
+import { clearTextFind, findTextInContainer, injectMath, interceptLinkClicks } from "./web";
 
 interface DocPreviewProps {
   root: string;
@@ -25,6 +26,9 @@ interface DocPreviewProps {
   sourceMode: boolean;
   theme: PluginTheme;
   compact: boolean;
+  findQuery: string;
+  findActive: number;
+  onFindResult(result: DocFindResult): void;
   onOpenDoc(path: string): void;
 }
 
@@ -35,6 +39,9 @@ export function DocPreview({
   sourceMode,
   theme,
   compact,
+  findQuery,
+  findActive,
+  onFindResult,
   onOpenDoc,
 }: DocPreviewProps) {
   const kind = docKind(path);
@@ -98,12 +105,53 @@ export function DocPreview({
       !safeMarkdown.pending &&
       !safeMarkdown.error,
   });
-  const [linkContainer, setLinkContainer] = useState<View | null>(null);
+
+  const [linkContainer, setLinkContainer] = useState<unknown>(null);
+  const [sourceRoot, setSourceRoot] = useState<unknown>(null);
+  const [markdownFind, setMarkdownFind] = useState<{ count: number; limited: boolean }>({
+    count: 0,
+    limited: false,
+  });
   const scrollView = useRef<ScrollView>(null);
+
+  const docxFind = useDocxFind({
+    hostId,
+    root,
+    path,
+    query: findQuery,
+    enabled: kind === "docx",
+  });
+  const docxFindUrl = useHtmlUrl(
+    kind === "docx" && findQuery.trim() ? docxFind.html : undefined,
+  );
+  const searchable = kind === "markdown" || kind === "docx";
+  const docxSearching = searchable && kind === "docx" && findQuery.trim().length > 0;
+  const findCount = !searchable ? 0 : kind === "docx" ? (docxSearching ? docxFind.count : 0) : markdownFind.count;
+  const findLimited = !searchable
+    ? false
+    : kind === "docx"
+      ? docxSearching && docxFind.limited
+      : markdownFind.limited;
+  const findPending = docxSearching ? docxFind.pending : false;
+  const findError = docxSearching ? docxFind.error : false;
+  const docxDisplayUrl =
+    findQuery.trim().length > 0 && docxFind.count > 0 && docxFindUrl
+      ? `${docxFindUrl}#match-${Math.min(findActive, docxFind.count - 1)}`
+      : docxUrl;
 
   useEffect(() => {
     scrollView.current?.scrollTo({ y: 0, animated: false });
   }, [path]);
+
+  useEffect(() => {
+    onFindResult({
+      query: findQuery,
+      count: findCount,
+      limited: findLimited,
+      pending: findPending,
+      error: findError,
+    });
+  }, [onFindResult, findQuery, findCount, findLimited, findPending, findError]);
 
   useLayoutEffect(() => {
     return injectMath(linkContainer, renderedMath.formulas);
@@ -120,22 +168,49 @@ export function DocPreview({
     });
   }, [linkContainer, path, sourceMode, onOpenDoc]);
 
+  // This effect is declared after injectMath so it scans the final MathML DOM.
+  useLayoutEffect(() => {
+    if (kind !== "markdown") return;
+    const result = findTextInContainer(
+      sourceMode ? sourceRoot : linkContainer,
+      findQuery,
+      findActive,
+    );
+    setMarkdownFind((previous) =>
+      previous.count === result.count && previous.limited === result.limited ? previous : result,
+    );
+    return () => clearTextFind();
+  }, [
+    kind,
+    sourceMode,
+    sourceRoot,
+    linkContainer,
+    findQuery,
+    findActive,
+    markdownImages.markdown,
+    renderedMath.formulas,
+  ]);
+
+  const pane = (body: ReactNode) => <View style={{ flex: 1, minHeight: 0 }}>{body}</View>;
+
   if (kind === "binary") {
-    return <Notice theme={theme} text="该文件类型不支持预览" />;
+    return pane(<Notice theme={theme} text="该文件类型不支持预览" />);
   }
 
   if (wantsText) {
-    if (textQuery.isPending) return <Centered><Loading /></Centered>;
-    if (textQuery.isError) return <Notice theme={theme} text="读取文件失败" />;
+    if (textQuery.isPending) {
+      return pane(<Centered><Loading /></Centered>);
+    }
+    if (textQuery.isError) return pane(<Notice theme={theme} text="读取文件失败" />);
     const { text, truncated } = textQuery.data;
     if (kind === "markdown" && !sourceMode) {
       if (renderedMath.pending || safeMarkdown.pending) {
-        return <Centered><Loading /></Centered>;
+        return pane(<Centered><Loading /></Centered>);
       }
       if (safeMarkdown.error) {
-        return <Notice theme={theme} text="内容安全检查失败，已停止渲染" />;
+        return pane(<Notice theme={theme} text="内容安全检查失败，已停止渲染" />);
       }
-      return (
+      return pane(
         <ScrollView
           ref={scrollView}
           style={{ flex: 1, backgroundColor: theme.colors.surface2 }}
@@ -164,65 +239,74 @@ export function DocPreview({
           >
             <Markdown>{markdownImages.markdown}</Markdown>
           </View>
-        </ScrollView>
+        </ScrollView>,
       );
     }
-    return <SourceView text={text} theme={theme} compact={compact} truncated={truncated} />;
+    return pane(
+      <SourceView
+        text={text}
+        theme={theme}
+        compact={compact}
+        truncated={truncated}
+        containerRef={setSourceRoot}
+      />,
+    );
   }
 
   if (kind === "docx") {
-    if (docxQuery.isPending) return <Centered><Loading /></Centered>;
+    if (docxQuery.isPending) {
+      return pane(<Centered><Loading /></Centered>);
+    }
     if (docxQuery.isError) {
-      return (
-        <Notice
-          theme={theme}
-          text={docxQuery.error?.message || "Word 文档读取失败"}
-        />
+      return pane(
+        <Notice theme={theme} text={docxQuery.error?.message || "Word 文档读取失败"} />,
       );
     }
     const data = docxQuery.data;
-    if (!data) return <Notice theme={theme} text="Word 文档读取失败" />;
-    if (!docxUrl) {
-      return <Notice theme={theme} text="当前客户端不支持 Word 预览，请在桌面端打开" />;
+    if (!data) return pane(<Notice theme={theme} text="Word 文档读取失败" />);
+    if (!docxDisplayUrl) {
+      return pane(<Notice theme={theme} text="当前客户端不支持 Word 预览，请在桌面端打开" />);
     }
-    return (
+    return pane(
       <View style={{ flex: 1, backgroundColor: "#ffffff" }}>
         {data.warnings.length > 0 ? (
           <Notice theme={theme} text={data.warnings.join("；")} />
         ) : null}
         <View style={{ flex: 1, minHeight: 0 }}>
-          <DocumentFrame url={docxUrl} />
+          <DocumentFrame url={docxDisplayUrl} />
         </View>
-      </View>
+      </View>,
     );
   }
 
-  if (bytesQuery.isPending) return <Centered><Loading /></Centered>;
-  if (bytesQuery.isError) return <Notice theme={theme} text="读取文件失败" />;
+  if (bytesQuery.isPending) {
+    return pane(<Centered><Loading /></Centered>);
+  }
+  if (bytesQuery.isError) return pane(<Notice theme={theme} text="读取文件失败" />);
 
   if (kind === "html" || kind === "pdf") {
     const previewUrl = kind === "html" ? htmlPreviewUrl : documentUrl;
     if (!previewUrl) {
-      return <Notice theme={theme} text="当前客户端不支持该预览，请在桌面端打开" />;
+      return pane(<Notice theme={theme} text="当前客户端不支持该预览，请在桌面端打开" />);
     }
-    return (
+    return pane(
       <View style={{ flex: 1, backgroundColor: "#ffffff" }}>
         <DocumentFrame url={previewUrl} />
-      </View>
+      </View>,
     );
   }
 
   if (!documentUrl) {
-    return <Notice theme={theme} text="当前客户端不支持图片预览" />;
+    return pane(<Notice theme={theme} text="当前客户端不支持图片预览" />);
   }
-  return (
+  return pane(
     <View style={{ flex: 1, padding: 16, backgroundColor: theme.colors.surface2 }}>
       <Image
         source={{ uri: documentUrl }}
         resizeMode="contain"
         style={{ flex: 1, width: "100%" }}
       />
-    </View>
+    </View>,
   );
 }
 
@@ -231,11 +315,13 @@ function SourceView({
   theme,
   compact,
   truncated,
+  containerRef,
 }: {
   text: string;
   theme: PluginTheme;
   compact: boolean;
   truncated: boolean;
+  containerRef: (node: unknown) => void;
 }) {
   return (
     <ScrollView
@@ -243,17 +329,19 @@ function SourceView({
       contentContainerStyle={{ padding: compact ? 12 : 20 }}
     >
       {truncated ? <Notice theme={theme} text="文件过大，仅显示前 2 MB" /> : null}
-      <Text
-        selectable
-        style={{
-          color: theme.colors.foreground,
-          fontFamily: "monospace",
-          fontSize: 12,
-          lineHeight: 18,
-        }}
-      >
-        {text}
-      </Text>
+      <View ref={containerRef}>
+        <Text
+          selectable
+          style={{
+            color: theme.colors.foreground,
+            fontFamily: "monospace",
+            fontSize: 12,
+            lineHeight: 18,
+          }}
+        >
+          {text}
+        </Text>
+      </View>
     </ScrollView>
   );
 }

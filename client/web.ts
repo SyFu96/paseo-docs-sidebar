@@ -192,17 +192,47 @@ interface WebDomContainer extends WebDomNode {
   tagName?: string;
   insertBefore(newChild: WebDomNode, reference: WebDomNode): WebDomNode;
   removeChild(child: WebDomNode): WebDomNode;
+  contains?(node: unknown): boolean;
+  scrollIntoView?(options?: { block?: string; inline?: string }): void;
+  scrollTop?: number;
+  scrollHeight?: number;
+  clientHeight?: number;
+  getBoundingClientRect?(): WebRect;
 }
 
 interface WebDomElement extends WebDomContainer {
   innerHTML: string;
   setAttribute(name: string, value: string): void;
+  appendChild(child: WebDomNode): WebDomNode;
+}
+
+interface WebRect {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  height: number;
+}
+
+interface WebRange {
+  setStart(node: WebDomNode, offset: number): void;
+  setEnd(node: WebDomNode, offset: number): void;
+  startContainer: WebDomNode;
+  getBoundingClientRect(): WebRect;
+}
+
+interface WebHighlightRegistry {
+  set(name: string, value: unknown): void;
+  delete(name: string): void;
 }
 
 interface WebDomDocument {
   createElement(tag: string): WebDomElement;
   createTextNode(text: string): WebDomNode;
   createTreeWalker(root: WebDomNode, whatToShow: number): { nextNode(): WebDomNode | null };
+  createRange(): WebRange;
+  head?: WebDomElement;
+  getElementById?(id: string): WebDomElement | null;
 }
 
 interface WebDomObserver {
@@ -212,8 +242,117 @@ interface WebDomObserver {
 
 declare const document: WebDomDocument | undefined;
 declare const MutationObserver: { new (callback: () => void): WebDomObserver } | undefined;
+declare const CSS: { highlights?: WebHighlightRegistry } | undefined;
+declare const Highlight: { new (...ranges: WebRange[]): unknown } | undefined;
+declare function getComputedStyle(element: WebDomContainer): { overflowY?: string };
 
 const SHOW_TEXT = 4;
+const MAX_FIND_MATCHES = 2000;
+const FIND_HIGHLIGHT_CSS = `::highlight(docs-find) { background-color: #fff3a3; color: #1f2328; }
+::highlight(docs-find-active) { background-color: #ffb347; color: #1f2328; }`;
+
+export interface TextFindResult {
+  count: number;
+  limited: boolean;
+}
+
+/**
+ * Scrolls the active match to the middle of its scroll container. `scrollIntoView` on the text
+ * node's parent would jump to the top of a source view that holds the whole file in one node.
+ */
+function scrollRangeIntoView(range: WebRange): void {
+  const rect = range.getBoundingClientRect();
+  let node = range.startContainer.parentElement ?? null;
+  while (node) {
+    const overflow = getComputedStyle(node).overflowY;
+    const scrollable =
+      (overflow === "auto" || overflow === "scroll" || overflow === "overlay") &&
+      (node.scrollHeight ?? 0) > (node.clientHeight ?? 0) + 1;
+    if (scrollable && node.getBoundingClientRect) {
+      const box = node.getBoundingClientRect();
+      const offset = rect.top - box.top - (node.clientHeight ?? 0) / 2 + rect.height / 2;
+      node.scrollTop = Math.max(0, (node.scrollTop ?? 0) + offset);
+      return;
+    }
+    node = node.parentElement ?? null;
+  }
+  range.startContainer.parentElement?.scrollIntoView?.({ block: "center", inline: "nearest" });
+}
+
+/** Clears the CSS highlight registries used by the in-document find bar. */
+export function clearTextFind(): void {
+  if (Platform.OS !== "web") return;
+  if (typeof CSS === "undefined" || !CSS.highlights) return;
+  CSS.highlights.delete("docs-find");
+  CSS.highlights.delete("docs-find-active");
+}
+
+/**
+ * Highlights query matches in a rendered Markdown or source container without mutating its DOM.
+ * Returns the number of matches and scrolls the active one into view. Desktop web only.
+ */
+export function findTextInContainer(
+  node: unknown,
+  query: string,
+  active: number,
+): TextFindResult {
+  clearTextFind();
+  if (Platform.OS !== "web" || typeof document === "undefined") {
+    return { count: 0, limited: false };
+  }
+  const needle = query.trim().toLowerCase();
+  const root = node as WebDomContainer | null;
+  if (!needle || !root) return { count: 0, limited: false };
+
+  const dom = document;
+  let style = dom.getElementById?.("docs-find-style") ?? null;
+  if (!style && dom.head) {
+    style = dom.createElement("style");
+    style.setAttribute("id", "docs-find-style");
+    style.innerHTML = FIND_HIGHLIGHT_CSS;
+    dom.head.appendChild(style);
+  }
+
+  const ranges: WebRange[] = [];
+  let limited = false;
+  const walker = dom.createTreeWalker(root, SHOW_TEXT);
+  let current = walker.nextNode();
+  while (current) {
+    const parentTag = current.parentElement?.tagName?.toUpperCase();
+    if (parentTag !== "SCRIPT" && parentTag !== "STYLE" && parentTag !== "NOSCRIPT") {
+      const value = current.nodeValue ?? "";
+      const lower = value.toLowerCase();
+      let from = 0;
+      let index = lower.indexOf(needle, from);
+      while (index >= 0) {
+        if (ranges.length >= MAX_FIND_MATCHES) {
+          limited = true;
+          break;
+        }
+        const range = dom.createRange();
+        range.setStart(current, index);
+        range.setEnd(current, index + needle.length);
+        ranges.push(range);
+        from = index + needle.length;
+        index = lower.indexOf(needle, from);
+      }
+    }
+    if (limited) break;
+    current = walker.nextNode();
+  }
+
+  const registry = typeof CSS === "undefined" ? undefined : CSS.highlights;
+  const HighlightCtor = typeof Highlight === "undefined" ? undefined : Highlight;
+  if (registry && HighlightCtor && ranges.length > 0) {
+    registry.set("docs-find", new HighlightCtor(...ranges));
+    const activeRange = ranges[Math.max(0, Math.min(active, ranges.length - 1))];
+    if (activeRange) registry.set("docs-find-active", new HighlightCtor(activeRange));
+  }
+
+  const activeRange = ranges[Math.max(0, Math.min(active, ranges.length - 1))];
+  if (activeRange) scrollRangeIntoView(activeRange);
+  return { count: ranges.length, limited };
+}
 
 /**
  * Replaces MathML placeholders inside the rendered Markdown with real MathML elements. Paseo's

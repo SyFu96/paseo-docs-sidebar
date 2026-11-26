@@ -50,6 +50,20 @@ export const readDocxRpc = defineRpc({
   }),
 });
 
+export const findDocxRpc = defineRpc({
+  name: "docs.find_docx",
+  input: z.object({
+    root: z.string().min(1),
+    path: z.string().min(1),
+    query: z.string().min(1).max(200),
+  }),
+  output: z.object({
+    html: z.string(),
+    count: z.number().int().nonnegative(),
+    limited: z.boolean(),
+  }),
+});
+
 export const renderMathRpc = defineRpc({
   name: "docs.render_math",
   input: z.object({ text: z.string().min(1).max(2 * 1024 * 1024) }),

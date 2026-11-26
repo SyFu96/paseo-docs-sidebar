@@ -2,10 +2,11 @@ import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useTabState, useWorkspace } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
-import { PanResponder, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { PanResponder, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { docKind, fileName } from "../shared/docs";
+import type { DocFindResult } from "./docx-find";
 import { FileTree } from "./file-tree";
 import { DocPreview } from "./preview";
 import { DEFAULT_DOCS_PANEL_STATE, docsPanelStateSchema, type DocsPanelState } from "./state";
@@ -13,6 +14,26 @@ import { DEFAULT_DOCS_PANEL_STATE, docsPanelStateSchema, type DocsPanelState } f
 const MIN_TREE_WIDTH = 160;
 const MAX_TREE_WIDTH = 560;
 const MIN_PREVIEW_WIDTH = 180;
+
+interface DocFindState {
+  path: string | null;
+  query: string;
+  active: number;
+  count: number;
+  limited: boolean;
+  pending: boolean;
+  error: boolean;
+}
+
+const EMPTY_DOC_FIND: DocFindState = {
+  path: null,
+  query: "",
+  active: 0,
+  count: 0,
+  limited: false,
+  pending: false,
+  error: false,
+};
 
 export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorkspacePanelProps) {
   const [state, setState] = useTabState(tab, docsPanelStateSchema, DEFAULT_DOCS_PANEL_STATE);
@@ -26,8 +47,53 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
   const sourceAvailable = active
     ? docKind(active) === "markdown" || docKind(active) === "html"
     : false;
+  const findAvailable =
+    Platform.OS === "web" && active
+      ? docKind(active) === "markdown" || docKind(active) === "docx"
+      : false;
+  const [find, setFind] = useState<DocFindState>(EMPTY_DOC_FIND);
 
   const update = (patch: Partial<DocsPanelState>) => setState({ ...state, ...patch });
+
+  const resetFind = () => setFind(EMPTY_DOC_FIND);
+  const findQuery = useDebouncedFindQuery(active, find.query);
+  const findActive = find.count > 0 ? find.active % find.count : 0;
+
+  const changeFindQuery = (value: string) => {
+    setFind({ ...EMPTY_DOC_FIND, path: active, query: value });
+  };
+
+  const reportFind = useCallback(
+    (result: DocFindResult) => {
+      setFind((previous) => {
+        // A late result from the document that was open before this one must not replace the
+        // current document's search state.
+        if (previous.path !== active || previous.query !== result.query) return previous;
+        if (
+          previous.count === result.count &&
+          previous.limited === result.limited &&
+          previous.pending === result.pending &&
+          previous.error === result.error
+        ) {
+          return previous;
+        }
+        const nextActive =
+          result.count > 0 && previous.active < result.count ? previous.active : 0;
+        return { ...previous, ...result, active: nextActive };
+      });
+    },
+    [active],
+  );
+
+  const stepFind = (delta: number) => {
+    setFind((previous) => {
+      if (previous.path !== active || previous.count === 0) return previous;
+      return {
+        ...previous,
+        active: (previous.active + delta + previous.count) % previous.count,
+      };
+    });
+  };
 
   const [contentWidth, setContentWidth] = useState(0);
   const contentWidthRef = useRef(0);
@@ -86,6 +152,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
   );
 
   const openDoc = (path: string) => {
+    if (path !== active) resetFind();
     const tabs = state.tabs.includes(path)
       ? state.tabs
       : [...state.tabs, path].slice(-24);
@@ -93,6 +160,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
   };
 
   const closeDoc = (path: string) => {
+    if (state.active === path) resetFind();
     const index = state.tabs.indexOf(path);
     const tabs = state.tabs.filter((item) => item !== path);
     const nextActive =
@@ -126,7 +194,10 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
         tabs={state.tabs}
         active={active}
         theme={theme}
-        onSelect={(path) => update({ active: path })}
+        onSelect={(path) => {
+          if (path !== active) resetFind();
+          update({ active: path });
+        }}
         onClose={closeDoc}
       />
       <View
@@ -149,13 +220,30 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
             onPress={() => update({ showTree: true })}
           />
         )}
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="middle"
-          style={{ flex: 1, minWidth: 0, color: theme.colors.foregroundMuted, fontSize: 12 }}
-        >
-          {workspace.name}
-        </Text>
+        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="middle"
+            style={{ flex: 1, minWidth: 0, color: theme.colors.foregroundMuted, fontSize: 12 }}
+          >
+            {workspace.name}
+          </Text>
+          {findAvailable ? (
+            <DocFindField
+              theme={theme}
+              compact={layout.compact}
+              query={find.query}
+              active={findActive}
+              count={find.count}
+              limited={find.limited}
+              pending={find.pending}
+              error={find.error}
+              onChangeQuery={changeFindQuery}
+              onPrevious={() => stepFind(-1)}
+              onNext={() => stepFind(1)}
+            />
+          ) : null}
+        </View>
         {sourceAvailable ? (
           <IconButton
             theme={theme}
@@ -253,6 +341,9 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
               sourceMode={state.source}
               theme={theme}
               compact={layout.compact}
+              findQuery={findQuery}
+              findActive={findActive}
+              onFindResult={reportFind}
               onOpenDoc={openDoc}
             />
           </View>
@@ -402,4 +493,189 @@ function iconFor(path: string): string {
     default:
       return "FileCode";
   }
+}
+
+/**
+ * The search field is kept in the document toolbar instead of relying on Ctrl/Cmd+F, because
+ * Paseo handles that shortcut before panel content sees it. Debouncing is keyed by document so a
+ * new tab never receives the previous document's query.
+ */
+function useDebouncedFindQuery(path: string | null, query: string): string {
+  const [debounced, setDebounced] = useState({ path, query });
+  useEffect(() => {
+    if (query.length === 0) {
+      setDebounced({ path, query });
+      return;
+    }
+    const timer = setTimeout(() => setDebounced({ path, query }), 150);
+    return () => clearTimeout(timer);
+  }, [path, query]);
+  return debounced.path === path ? debounced.query : "";
+}
+
+function DocFindField({
+  theme,
+  compact,
+  query,
+  active,
+  count,
+  limited,
+  pending,
+  error,
+  onChangeQuery,
+  onPrevious,
+  onNext,
+}: {
+  theme: PluginTheme;
+  compact: boolean;
+  query: string;
+  active: number;
+  count: number;
+  limited: boolean;
+  pending: boolean;
+  error: boolean;
+  onChangeQuery(value: string): void;
+  onPrevious(): void;
+  onNext(): void;
+}) {
+  const status = pending
+    ? "…"
+    : error
+      ? "查找失败"
+      : query.trim()
+        ? `${count > 0 ? active + 1 : 0} / ${count}${limited ? "+" : ""}`
+        : "";
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  const focusInput = () => {
+    // Keep typing and Enter-to-next available after clicking one of the field buttons.
+    input.current?.focus();
+  };
+  return (
+    <View
+      style={{
+        height: 26,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 2,
+        flexGrow: 0,
+        flexShrink: 1,
+        flexBasis: compact ? 160 : 300,
+        maxWidth: 420,
+        minWidth: 120,
+        paddingLeft: 6,
+        paddingRight: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.surface0,
+      }}
+    >
+      <Icon name="Search" size={12} color={theme.colors.foregroundMuted} />
+      <TextInput
+        ref={input}
+        value={query}
+        onChangeText={onChangeQuery}
+        placeholder="在文档中查找"
+        placeholderTextColor={theme.colors.foregroundMuted}
+        accessibilityLabel="在文档中查找"
+        maxLength={200}
+        autoCapitalize="none"
+        autoCorrect={false}
+        blurOnSubmit={false}
+        returnKeyType="search"
+        onSubmitEditing={onNext}
+        onKeyPress={(event) => {
+          if (event.nativeEvent.key === "Escape") onChangeQuery("");
+        }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          height: 24,
+          paddingHorizontal: 4,
+          paddingVertical: 0,
+          color: theme.colors.foreground,
+          fontSize: 12,
+          backgroundColor: "transparent",
+        }}
+      />
+      {status ? (
+        <Text
+          numberOfLines={1}
+          style={{
+            minWidth: 34,
+            color: theme.colors.foregroundMuted,
+            fontSize: 10,
+            textAlign: "right",
+          }}
+        >
+          {status}
+        </Text>
+      ) : null}
+      <FindStepButton
+        theme={theme}
+        icon="ChevronUp"
+        label="上一个匹配"
+        disabled={count === 0}
+        onPress={() => {
+          onPrevious();
+          focusInput();
+        }}
+      />
+      <FindStepButton
+        theme={theme}
+        icon="ChevronDown"
+        label="下一个匹配"
+        disabled={count === 0}
+        onPress={() => {
+          onNext();
+          focusInput();
+        }}
+      />
+      {query.length > 0 ? (
+        <FindStepButton
+          theme={theme}
+          icon="X"
+          label="清除查找"
+          onPress={() => {
+            onChangeQuery("");
+            focusInput();
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function FindStepButton({
+  theme,
+  icon,
+  label,
+  disabled,
+  onPress,
+}: {
+  theme: PluginTheme;
+  icon: string;
+  label: string;
+  disabled?: boolean;
+  onPress(): void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: 18,
+        height: 22,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 4,
+        opacity: disabled ? 0.35 : 1,
+        backgroundColor: pressed ? theme.colors.surface2 : "transparent",
+      })}
+    >
+      <Icon name={icon} size={11} color={theme.colors.foregroundMuted} />
+    </Pressable>
+  );
 }

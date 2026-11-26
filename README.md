@@ -10,6 +10,7 @@ A Paseo plugin that adds a document workspace to the right explorer: a workspace
 - LaTeX math in Markdown (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`) rendered on the desktop client.
 - Word documents (`.docx`, `.docm`) as a simplified reading view with headings, basic formatting, tables, and embedded images on desktop.
 - HTML and PDF previews in an isolated document frame on desktop.
+- Find in the current document from the toolbar search field: Markdown preview, Markdown source, and Word reading views.
 - Images inline; other text files as source.
 - Relative document links in a Markdown preview open as new tabs in the same panel on the desktop client.
 - Open documents, expanded folders, and tree visibility persist per explorer tab.
@@ -63,11 +64,13 @@ The plugin has no separate build step. Paseo compiles the TypeScript entries and
 ## How it works
 
 - `index.client.tsx` registers a workspace panel in the explorer and two command-center entries.
-- `client/docs-panel.tsx` renders the document tabs, toolbar, tree, and preview split.
+- `client/docs-panel.tsx` renders the document tabs, toolbar (including the search field and match navigation), tree, and preview split.
 - `client/file-tree.tsx` lazy-loads directories and searches file names.
-- `client/preview.tsx` renders Markdown with Paseo's `Markdown` component, and HTML/PDF with `DocumentFrame`.
+- `client/preview.tsx` renders Markdown with Paseo's `Markdown` component, and HTML/PDF with `DocumentFrame`. It also runs the search for the toolbar field.
+- `client/web.ts` implements Markdown text finding with the CSS Custom Highlight API.
+- `client/docx-find.ts` and `server/docx-find.ts` find matches in the converted Word HTML and wrap them in anchor targets, so the sandboxed preview frame can highlight and scroll to each match.
 - `server/math.ts` converts TeX math to MathML with KaTeX; `client/markdown-math.ts` and `client/web.ts` inject it after rendering.
-- `index.server.ts` handles daemon-side RPCs for listing, reading, searching, converting Word files, and rendering math.
+- `index.server.ts` handles daemon-side RPCs for listing, reading, searching, converting Word files, finding text in Word files, and rendering math.
 - `shared/docs.ts` defines the RPC contracts and file-kind helpers.
 
 ## Limits
@@ -79,6 +82,7 @@ The plugin has no separate build step. Paseo compiles the TypeScript entries and
 - Remote images in Markdown are replaced with a local placeholder. HTML previews block network resources with a content security policy; http(s) links open externally only when clicked.
 - Math rendering needs the desktop client; other clients show the raw TeX. Unsupported TeX stays as text.
 - Word, HTML, PDF, and math previews need the desktop client.
+- Document find is available on the desktop client for Markdown and Word previews through the toolbar search field. It does not search HTML or PDF previews; use the PDF viewer's own find. Ctrl/Cmd+F stays with Paseo's workspace search, so the plugin does not override it.
 
 ## License
 
