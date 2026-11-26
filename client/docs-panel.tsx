@@ -2,7 +2,7 @@ import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useTabState, useWorkspace } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo, type ComponentRef } from "react";
 import { PanResponder, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { docKind, fileName } from "../shared/docs";
@@ -22,6 +22,8 @@ import { DEFAULT_DOCS_PANEL_STATE, docsPanelStateSchema, type DocsPanelState } f
 const MIN_TREE_WIDTH = 160;
 const MAX_TREE_WIDTH = 560;
 const MIN_PREVIEW_WIDTH = 180;
+
+const MemoFileTree = memo(FileTree);
 
 interface DocFindState {
   path: string | null;
@@ -61,6 +63,7 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
       : false;
   const [find, setFind] = useState<DocFindState>(EMPTY_DOC_FIND);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [treeMounted, setTreeMounted] = useState(state.showTree);
 
   const update = (patch: Partial<DocsPanelState>) => setState({ ...state, ...patch });
 
@@ -113,8 +116,10 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
   const dragWidthRef = useRef<number | null>(null);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const openDocRef = useRef<(path: string) => void>(() => {});
+  const stateRef = useRef(state);
   updateRef.current = update;
   compactRef.current = layout.compact;
+  stateRef.current = state;
 
   const maxTreeWidth =
     contentWidth > 0
@@ -198,6 +203,13 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
   };
 
   openDocRef.current = openDoc;
+  const openTreeDoc = useCallback((path: string) => {
+    openDocRef.current(path);
+  }, []);
+
+  useEffect(() => {
+    if (state.showTree) setTreeMounted(true);
+  }, [state.showTree]);
 
   // The client-level link interceptor sends chat document links here. Keeping the queue in the
   // panel scopes a reveal to its workspace and lets the panel open the tab once it is mounted.
@@ -217,13 +229,14 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
     };
   }, [workspaceId, root]);
 
-  const toggleFolder = (path: string) => {
-    update({
-      expanded: state.expanded.includes(path)
-        ? state.expanded.filter((item) => item !== path)
-        : [...state.expanded, path],
+  const toggleFolder = useCallback((path: string) => {
+    const expanded = stateRef.current.expanded;
+    updateRef.current({
+      expanded: expanded.includes(path)
+        ? expanded.filter((item) => item !== path)
+        : [...expanded, path],
     });
-  };
+  }, []);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["docs"] });
@@ -268,7 +281,10 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
             theme={theme}
             icon="PanelLeftOpen"
             label="显示文件树"
-            onPress={() => update({ showTree: true })}
+            onPress={() => {
+              setTreeMounted(true);
+              update({ showTree: true });
+            }}
           />
         )}
         <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -317,13 +333,14 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
           flexDirection: layout.compact ? "column" : "row",
         }}
       >
-        {state.showTree ? (
+        {treeMounted ? (
           <View
             style={{
               width: layout.compact ? "100%" : treeWidth,
               flex: layout.compact ? 1 : undefined,
               minHeight: 0,
               backgroundColor: theme.colors.surface1,
+              display: state.showTree ? "flex" : "none",
             }}
           >
             <View
@@ -346,14 +363,14 @@ export function DocsPanel({ theme, layout, workspaceId, host, tab }: PluginWorks
                 onPress={() => update({ showTree: false })}
               />
             </View>
-            <FileTree
+            <MemoFileTree
               root={root}
               hostId={host.id}
               active={active}
               expanded={state.expanded}
               theme={theme}
               onToggle={toggleFolder}
-              onOpen={openDoc}
+              onOpen={openTreeDoc}
             />
           </View>
         ) : null}
