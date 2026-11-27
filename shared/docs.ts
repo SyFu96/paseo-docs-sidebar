@@ -89,6 +89,20 @@ export const sanitizeMarkdownRpc = defineRpc({
   }),
 });
 
+/**
+ * Resolves a document path from agent output. Agent paths are often written relative to a
+ * subdirectory, so `suffix` allows a unique path-tail match after the exact path misses.
+ */
+export const resolveDocPathRpc = defineRpc({
+  name: "docs.resolve_path",
+  input: z.object({
+    root: z.string().min(1),
+    path: z.string().min(1),
+    suffix: z.boolean().default(false),
+  }),
+  output: z.object({ path: z.string().nullable() }),
+});
+
 export type DocKind = "markdown" | "html" | "pdf" | "docx" | "image" | "text" | "binary";
 
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);

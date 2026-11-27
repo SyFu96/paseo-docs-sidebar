@@ -5,6 +5,7 @@ import {
   readBinaryFile,
   readDocxFile,
   readTextFile,
+  resolveDocPath,
   searchFiles,
 } from "./server/docs";
 import { renderMathInMarkdown } from "./server/math";
@@ -16,6 +17,7 @@ import {
   readDocxRpc,
   readTextRpc,
   renderMathRpc,
+  resolveDocPathRpc,
   sanitizeMarkdownRpc,
   searchFilesRpc,
 } from "./shared/docs";
@@ -27,6 +29,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(readBytesRpc, readBinaryFile);
   server.handle(readDocxRpc, readDocxFile);
   server.handle(findDocxRpc, findDocxFile);
+  server.handle(resolveDocPathRpc, resolveDocPath);
   server.handle(renderMathRpc, ({ text }) => renderMathInMarkdown(text));
   server.handle(sanitizeMarkdownRpc, ({ text }) => sanitizeMarkdownImages(text));
   return () => {};

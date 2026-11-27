@@ -11,7 +11,7 @@ A Paseo plugin that adds a document workspace to the right explorer: a workspace
 - Word documents (`.docx`, `.docm`) as a simplified reading view with headings, basic formatting, tables, and embedded images on desktop.
 - HTML and PDF previews in an isolated document frame on desktop.
 - Find in the current document from the toolbar search field: Markdown preview, Markdown source, and Word reading views.
-- On the desktop client, click a local document link in an agent message to open it in the Docs panel instead of the center file tab. Ctrl/Cmd+click keeps Paseo's default behavior.
+- On the desktop client, click a local document link in an agent message to open it in the Docs panel instead of the center file tab. Ctrl/Cmd+click keeps Paseo's default behavior. Paths written relative to a subdirectory resolve to the unique matching file; ambiguous or missing paths show an error instead of guessing.
 - Images inline; other text files as source.
 - Relative document links in a Markdown preview open as new tabs in the same panel on the desktop client.
 - Open documents, expanded folders, and tree visibility persist per explorer tab.
