@@ -1,7 +1,9 @@
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { Platform } from "react-native";
 import { renderMathRpc } from "../shared/docs";
+import { textKey } from "./text-key";
 
 export interface RenderedMath {
   text: string;
@@ -24,8 +26,9 @@ export function useRenderedMath(input: {
   const renderMath = useRpc(renderMathRpc);
   const hasMath = /\$|\\\(|\\\[/.test(input.text);
   const enabled = input.enabled && Platform.OS === "web" && hasMath;
+  const version = useMemo(() => textKey(input.text), [input.text]);
   const query = useQuery({
-    queryKey: ["docs", "math", input.hostId, input.root, input.path],
+    queryKey: ["docs", "math", input.hostId, input.root, input.path, version],
     queryFn: () => renderMath({ text: input.text }),
     enabled,
     staleTime: 60_000,

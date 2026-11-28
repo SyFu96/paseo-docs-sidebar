@@ -1,6 +1,8 @@
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { sanitizeMarkdownRpc } from "../shared/docs";
+import { textKey } from "./text-key";
 
 export interface SafeMarkdown {
   text: string;
@@ -23,8 +25,9 @@ export function useSafeMarkdown(input: {
 }): SafeMarkdown {
   const sanitize = useRpc(sanitizeMarkdownRpc);
   const enabled = input.enabled && input.text.length > 0;
+  const version = useMemo(() => textKey(input.text), [input.text]);
   const query = useQuery({
-    queryKey: ["docs", "safe-markdown", input.hostId, input.root, input.path],
+    queryKey: ["docs", "safe-markdown", input.hostId, input.root, input.path, version],
     queryFn: () => sanitize({ text: input.text }),
     enabled,
     staleTime: 60_000,
